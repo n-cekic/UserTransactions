@@ -1,0 +1,3 @@
+# ignore binaries
+cmd/usersd/usersd
+cmd/usersd/transactionsd
