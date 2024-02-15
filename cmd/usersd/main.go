@@ -18,5 +18,5 @@ func main() {
 	signal.Notify(shutdownCh, os.Interrupt)
 	<-shutdownCh
 
-	L.Logger.Println("\nReceived interrupt signal. Shutting down gracefully...")
+	L.Logger.Println("Received interrupt signal. Shutting down gracefully...")
 }
