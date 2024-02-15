@@ -1,12 +1,14 @@
 package users
 
 import (
+	"encoding/json"
 	"net/http"
 	L "userTransactions/logging"
 )
 
 type Service struct {
 	mux  *http.ServeMux
+	repo Repo
 	port string
 }
 
@@ -22,7 +24,7 @@ func Init() *Service {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.NotFoundHandler())
-	mux.Handle("/createUser", http.HandlerFunc(createUserHandler))
+	mux.Handle("/createUser", http.HandlerFunc(srv.createUserHandler))
 	mux.Handle("/balance", http.HandlerFunc(getUserBalance))
 
 	srv.mux = mux
@@ -44,7 +46,18 @@ func (s *Service) Run() {
 	}()
 }
 
-func createUserHandler(w http.ResponseWriter, r *http.Request) {
+func (s Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
+	d := json.NewDecoder(r.Body)
+	d.DisallowUnknownFields()
+
+	var userData createUserRequest
+	err := d.Decode(&userData)
+	if err != nil {
+		L.Logger.Printf("Failed decoding the request. %s", err.Error())
+		L.Logger.Printf("Payload: %+v", r.Body)
+		return
+	}
+
 	panic("createUserHandler unimplemented")
 }
 
