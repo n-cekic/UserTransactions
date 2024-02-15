@@ -46,6 +46,12 @@ func (s *Service) Run() {
 	}()
 }
 
+func (s *Service) Stop() {
+	L.Logger.Print("Closing DB connection")
+	s.repo.db.Close()
+	L.Logger.Print("DB connection closed")
+}
+
 func (s Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	d := json.NewDecoder(r.Body)
 	d.DisallowUnknownFields()
