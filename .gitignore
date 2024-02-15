@@ -1,3 +1,4 @@
 # ignore binaries
 cmd/usersd/usersd
 cmd/transactionsd/transactionsd
+*.exe
