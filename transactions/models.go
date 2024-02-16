@@ -1,5 +1,7 @@
 package transactions
 
+import "time"
+
 type depositRequest struct {
 	UserId *int    `json:"userId"`
 	Amount float64 `json:"amount"`
@@ -17,4 +19,10 @@ type transferRequest struct {
 
 type BalanceNATSResponse struct {
 	Balance float64 `jsaon:"balance"`
+}
+
+type kafkaMessage struct {
+	Id        int       `json:"user_id"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
 }

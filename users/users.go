@@ -23,7 +23,7 @@ type Service struct {
 }
 
 // service port
-const PORT = ":8765"
+const PORT = ":8080"
 
 // DB connection params
 const (
@@ -37,7 +37,7 @@ const (
 // kafka connection params
 const (
 	broker = "localhost:9092"
-	topic  = "newuser"
+	topic  = "new.user"
 )
 
 // NATS connection
@@ -73,7 +73,7 @@ func (srv *Service) muxSetup() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.NotFoundHandler())
-	mux.Handle("/createUser", http.HandlerFunc(srv.createUserHandler))
+	mux.Handle("/createuser", http.HandlerFunc(srv.createUserHandler))
 	mux.Handle("/balance", http.HandlerFunc(srv.getUserBalance))
 
 	srv.mux = mux
@@ -172,7 +172,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.repo.createUser(userData.Email)
+	id, err := s.repo.createUser(userData.Email)
 	if err != nil {
 		L.Logger.Info("Failed creating new user: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -182,6 +182,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	// KAFKA notify
 	newUserNotification := newUserKafkaMessage{
+		Id:        id,
 		Email:     userData.Email,
 		CreatedAt: time.Now(),
 	}
@@ -201,6 +202,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		L.Logger.Error("Failed sending kafka message", msg.Value, ": ", err)
 	}
 
+	L.Logger.Infof("New user %s created", userData.Email)
 	w.Write([]byte("New user created"))
 }
 

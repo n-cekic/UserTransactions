@@ -7,6 +7,7 @@ type createUserRequest struct {
 }
 
 type newUserKafkaMessage struct {
+	Id        int       `json:"user_id"`
 	Email     string    `json:"email"`
 	CreatedAt time.Time `json:"createdAt"`
 }

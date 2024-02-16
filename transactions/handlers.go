@@ -21,7 +21,7 @@ func (s *Service) depositHandler(w http.ResponseWriter, r *http.Request) {
 	var deposit depositRequest
 	err := d.Decode(&deposit)
 	if err != nil {
-		L.Logger.Errorf("Failed decoding deposit request: %+v. %s", r.Body, err.Error())
+		L.Logger.Errorf("Failed decoding deposit request. %s", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("Failed decoding deposit request. %s", err.Error())))
 		return
