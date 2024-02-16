@@ -17,5 +17,6 @@ CREATE TABLE "transaction" (
     "type" VARCHAR(10) NOT NULL,
     "from" VARCHAR(255) NOT NULL,
     "to" VARCHAR(255),
+    "amount" DOUBLE PRECISION,
     "timestamp" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
