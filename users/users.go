@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 	L "userTransactions/logging"
+	"userTransactions/transactions"
 
 	"github.com/IBM/sarama"
 	"github.com/nats-io/nats.go"
@@ -158,9 +159,9 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var userData createUserRequest
 	err := d.Decode(&userData)
 	if err != nil {
-		L.Logger.Errorf("Failed decoding the request: %+v. %s", r.Body, err.Error())
+		L.Logger.Errorf("Failed decoding create user request: %+v. %s", r.Body, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Failed decoding the request. %s", err.Error())))
+		w.Write([]byte(fmt.Sprintf("Failed decoding create user request. %s", err.Error())))
 		return
 	}
 
@@ -217,9 +218,9 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 	var userData getBalanceRequest
 	err := d.Decode(&userData)
 	if err != nil {
-		L.Logger.Errorf("Failed decoding the request: %+v. %s", r.Body, err.Error())
+		L.Logger.Errorf("Failed decoding get balance request: %+v. %s", r.Body, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Failed decoding the request. %s", err.Error())))
+		w.Write([]byte(fmt.Sprintf("Failed decoding get balance request. %s", err.Error())))
 		return
 	}
 
@@ -253,7 +254,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var balance float64
+	var balance transactions.BalanceNATSResponse
 
 	err = json.Unmarshal(natsResp.Data, &balance)
 	if err != nil {
@@ -263,11 +264,11 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	L.Logger.Info("Balance retreived ", balance)
+	L.Logger.Infof("Balance retreived %+v", balance)
 
 	resp := getBalanceResponse{
 		Email:   userData.Email,
-		Balance: balance,
+		Balance: balance.Balance,
 	}
 
 	msgJSON, err := json.Marshal(resp)
