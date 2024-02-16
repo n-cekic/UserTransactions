@@ -14,9 +14,9 @@ CREATE TABLE "userbalance" (
 -- Crea the 'transaction' table
 CREATE TABLE "transaction" (
     id SERIAL PRIMARY KEY,
-    "type" VARCHAR(10) NOT NULL,
-    "from" VARCHAR(255) NOT NULL,
-    "to" VARCHAR(255),
+    "type" VARCHAR(255) NOT NULL,
+    "from" INTEGER NOT NULL,
+    "to" INTEGER NOT NULL,
     "amount" DOUBLE PRECISION,
     "timestamp" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
