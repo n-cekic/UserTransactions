@@ -14,13 +14,25 @@ import (
 )
 
 type Service struct {
-	mux  *http.ServeMux
-	repo Repo
-	port string
+	mux      *http.ServeMux
+	repo     Repo
+	port     string
+	producer sarama.SyncProducer
 }
 
+// service port
 const PORT = ":8765"
 
+// DB connection params
+const (
+	dbHost     = "localhost"
+	dbPort     = 5432
+	dbUser     = "postgres"
+	dbPassword = "postgres"
+	dbName     = "users"
+)
+
+// kafka connection params
 const (
 	broker = "localhost:9092"
 	topic  = "newuser"
@@ -33,6 +45,20 @@ func Init() *Service {
 	var srv Service
 
 	// initialize REST service
+	srv.muxSetup()
+
+	// initialiye DB connection
+	srv.dbSetup()
+
+	// initialize kafka connection
+	srv.kafkaSetup()
+
+	L.Logger.Println("Service initialized")
+	return &srv
+
+}
+
+func (srv *Service) muxSetup() {
 	srv.port = PORT
 
 	mux := http.NewServeMux()
@@ -42,15 +68,15 @@ func Init() *Service {
 	mux.Handle("/balance", http.HandlerFunc(getUserBalance))
 
 	srv.mux = mux
+}
 
-	// initialiye DB connection
+func (srv *Service) dbSetup() {
 	connectionString := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-		host, port, user, password, dbname)
+		dbHost, dbPort, dbUser, dbPassword, dbName)
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
 		L.Logger.Fatalf("Failed initializin DB connection. Connection string: %s. Error: %s", connectionString, err.Error())
 	}
-
 	srv.repo.db = db
 
 	err = srv.repo.db.Ping()
