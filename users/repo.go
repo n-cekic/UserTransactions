@@ -20,3 +20,17 @@ func (r *Repo) createUser(email string) error {
 	}
 	return err
 }
+
+func (r *Repo) getUserIDFromEmail(email string) (int, error) {
+	q := `SELECT user_id FROM "user" WHERE email = $1`
+
+	var id int
+	err := r.db.QueryRow(q, email).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			L.Logger.Print("No matching record found for the given name.")
+			return id, err
+		}
+	}
+	return id, err
+}
