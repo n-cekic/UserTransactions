@@ -41,7 +41,7 @@ const (
 
 // NATS connection
 const (
-	subject = "get.balance"
+	subject = "get.balance."
 )
 
 // Init configures and initializes the service and DB connection
@@ -239,7 +239,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 		NATS response from transactions service
 	*/
 
-	natsResp, err := s.nc.Request(subject, []byte(fmt.Sprintf("%d", id)), 10*time.Millisecond)
+	natsResp, err := s.nc.Request(subject+fmt.Sprintf("%d", id), nil, 10*time.Millisecond)
 	if err != nil {
 		L.Logger.Errorf("Failed getting balance for user %s: %s", userData.Email, err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
