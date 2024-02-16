@@ -198,7 +198,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err = s.producer.SendMessage(&msg)
 	if err != nil {
-		L.Logger.Errorf("Failed sending kafka message %s : ", msg.Value, err)
+		L.Logger.Error("Failed sending kafka message", msg.Value, ": ", err)
 	}
 
 	w.Write([]byte("New user created"))
@@ -275,7 +275,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		L.Logger.Error("Error encoding getBalanceResponse struct to JSON: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Error encoding getBalanceResponse struct to JSON: ", err)))
+		w.Write([]byte(fmt.Sprint("Error encoding getBalanceResponse struct to JSON: ", err)))
 		return
 	}
 
