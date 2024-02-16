@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  usersd:
+    build:
+      context: ./cmd/usersd
+    ports:
+      - "8765:8765"
+    networks:
+      - my-network
+
+  # service2:
+  #   build:
+  #     context: ./cmd/service2
+  #   ports:
+  #     - "7654:7654"
+  #   depends_on:
+  #     - usersd
+  #   networks:
+  #     - my-network
+
+networks:
+  my-network:
+    driver: bridge

@@ -1,24 +1,18 @@
-version: '3'
+version: '3.8'
 
 services:
-  usersd:
-    build:
-      context: ./cmd/usersd
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    environment:
+      POSTGRES_DB: user_transaction
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
     ports:
-      - "8765:8765"
-    networks:
-      - my-network
+      - "5432:5432"
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d
+      - user_transaction_data:/var/lib/postgresql/data
 
-  # service2:
-  #   build:
-  #     context: ./cmd/service2
-  #   ports:
-  #     - "7654:7654"
-  #   depends_on:
-  #     - usersd
-  #   networks:
-  #     - my-network
-
-networks:
-  my-network:
-    driver: bridge
+volumes:
+  user_transaction_data:
