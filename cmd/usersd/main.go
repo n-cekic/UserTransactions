@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	L.Logger.Println("starting service user")
+	L.Logger.Info("starting service user")
 
 	// initialiye service
 	srv := users.Init()
@@ -20,7 +20,7 @@ func main() {
 	shutdownCh := make(chan os.Signal, 1)
 	signal.Notify(shutdownCh, os.Interrupt)
 	<-shutdownCh
-	L.Logger.Println("Received interrupt signal. Shutting down gracefully...")
+	L.Logger.Info("Received interrupt signal. Shutting down gracefully...")
 
 	srv.Stop()
 }

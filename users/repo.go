@@ -16,7 +16,7 @@ func (r *Repo) createUser(email string) error {
 
 	_, err := r.db.Exec(q, email)
 	if err != nil {
-		L.Logger.Printf("New user insert failed: %s", err.Error())
+		L.Logger.Errorf("New user insert failed: %s", err.Error())
 	}
 	return err
 }
@@ -28,7 +28,7 @@ func (r *Repo) getUserIDFromEmail(email string) (int, error) {
 	err := r.db.QueryRow(q, email).Scan(&id)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			L.Logger.Print("No matching record found for the given name.")
+			L.Logger.Info("No matching record found for the given email: ", email)
 			return id, err
 		}
 	}

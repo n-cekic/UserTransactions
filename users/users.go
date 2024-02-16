@@ -46,7 +46,7 @@ const (
 
 // Init configures and initializes the service and DB connection
 func Init() *Service {
-	L.Logger.Println("Service is being initialized")
+	L.Logger.Info("Service is being initialized")
 
 	var srv Service
 
@@ -62,7 +62,7 @@ func Init() *Service {
 	// initialize NATS connection
 	srv.natsSetup()
 
-	L.Logger.Println("Service initialized")
+	L.Logger.Info("Service initialized")
 	return &srv
 
 }
@@ -92,7 +92,7 @@ func (srv *Service) dbSetup() {
 	if err != nil {
 		L.Logger.Fatalf("Failed to ping the DB. Connection string: %s. Error: %s", connectionString, err.Error())
 	} else {
-		L.Logger.Println("DB connection established")
+		L.Logger.Info("DB connection established")
 	}
 }
 
@@ -120,34 +120,34 @@ func (srv *Service) natsSetup() {
 
 // Run is used to start service
 func (s *Service) Run() {
-	L.Logger.Println("Running the service")
+	L.Logger.Info("Running the service")
 	go func() {
 		err := http.ListenAndServe(s.port, s.mux)
 		if err != nil {
 			L.Logger.Fatalf("failed startign the service on port %s :%s", s.port, err.Error())
 		} else {
-			L.Logger.Printf("The service is up and running on port %s", s.port)
+			L.Logger.Infof("The service is up and running on port %s", s.port)
 		}
 	}()
 }
 
 // Stop is stopping the service and closes DB connection
 func (s *Service) Stop() {
-	L.Logger.Print("Closing DB connection...")
+	L.Logger.Info("Closing DB connection...")
 	s.repo.db.Close()
 
-	L.Logger.Print("Closing Kafka producer...")
+	L.Logger.Info("Closing Kafka producer...")
 	if err := s.producer.Close(); err != nil {
-		L.Logger.Print("Error closing Kafka producer: ", err)
+		L.Logger.Info("Error closing Kafka producer: ", err)
 	}
 
-	L.Logger.Print("Closing NATS connection...")
+	L.Logger.Info("Closing NATS connection...")
 	s.nc.Close()
 }
 
 func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		L.Logger.Printf("Request method unallowed: %s", r.Method)
+		L.Logger.Errorf("Request method noot allowed: %s", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		w.Write([]byte(fmt.Sprintf("Request method unallowed: %s", r.Method)))
 		return
@@ -159,15 +159,14 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var userData createUserRequest
 	err := d.Decode(&userData)
 	if err != nil {
-		L.Logger.Printf("Failed decoding the request. %s", err.Error())
-		L.Logger.Printf("Payload: %+v", r.Body)
+		L.Logger.Errorf("Failed decoding the request: %+v. %s", r.Body, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("Failed decoding the request. %s", err.Error())))
 		return
 	}
 
 	if userData.Email == "" {
-		L.Logger.Print("Email is mandatory in request")
+		L.Logger.Info("Email is mandatory in request")
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Email is mandatory in request"))
 		return
@@ -175,7 +174,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.repo.createUser(userData.Email)
 	if err != nil {
-		L.Logger.Printf("Failed creating new user: %s", err.Error())
+		L.Logger.Info("Failed creating new user: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("Failed creating new user. %s", err.Error())))
 		return
@@ -189,7 +188,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	msgJSON, err := json.Marshal(newUserNotification)
 	if err != nil {
-		L.Logger.Print("Error encoding newUserKafkaMessage struct to JSON: ", err)
+		L.Logger.Info("Error encoding newUserKafkaMessage struct to JSON: ", err)
 	}
 
 	msg := sarama.ProducerMessage{
@@ -199,7 +198,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 	_, _, err = s.producer.SendMessage(&msg)
 	if err != nil {
-		L.Logger.Printf("Failed sending kafka message %s : ", msg.Value, err)
+		L.Logger.Errorf("Failed sending kafka message %s : ", msg.Value, err)
 	}
 
 	w.Write([]byte("New user created"))
@@ -207,7 +206,7 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		L.Logger.Printf("Request method unallowed: %s", r.Method)
+		L.Logger.Errorf("Request method not allowed: %s", r.Method)
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		w.Write([]byte(fmt.Sprintf("Request method unallowed: %s", r.Method)))
 		return
@@ -219,8 +218,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 	var userData getBalanceRequest
 	err := d.Decode(&userData)
 	if err != nil {
-		L.Logger.Printf("Failed decoding the request. %s", err.Error())
-		L.Logger.Printf("Payload: %+v", r.Body)
+		L.Logger.Errorf("Failed decoding the request: %+v. %s", r.Body, err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("Failed decoding the request. %s", err.Error())))
 		return
@@ -229,7 +227,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 	id, err := s.repo.getUserIDFromEmail(userData.Email)
 
 	if err != nil {
-		L.Logger.Print("Failed getting userID based on the given e-mail: ", err)
+		L.Logger.Error("Failed getting userID based on the given e-mail: ", err)
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("Failed getting userID based on the given e-mail: %s", err.Error())))
 		return
@@ -243,14 +241,14 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 
 	natsResp, err := s.nc.Request(subject, []byte(fmt.Sprintf("%d", id)), 10*time.Millisecond)
 	if err != nil {
-		L.Logger.Printf("Failed getting balance for user %s: %s", userData.Email, err.Error())
+		L.Logger.Errorf("Failed getting balance for user %s: %s", userData.Email, err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("Failed getting balance for user %s: %s", userData.Email, err.Error())))
 		return
 	}
 
 	if natsResp == nil {
-		L.Logger.Printf("NATS request timed out")
+		L.Logger.Error("NATS request timed out")
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("NATS request timed out"))
 		return
@@ -260,13 +258,13 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(natsResp.Data, &balance)
 	if err != nil {
-		L.Logger.Printf("Error decoding response: %v", err)
+		L.Logger.Error("Error decoding response: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("Error decoding NATS response: %v", err)))
 		return
 	}
 
-	L.Logger.Print("Balance retreived ", balance)
+	L.Logger.Info("Balance retreived ", balance)
 
 	resp := getBalanceResponse{
 		Email:   userData.Email,
@@ -275,7 +273,7 @@ func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
 
 	msgJSON, err := json.Marshal(resp)
 	if err != nil {
-		L.Logger.Print("Error encoding getBalanceResponse struct to JSON: ", err)
+		L.Logger.Error("Error encoding getBalanceResponse struct to JSON: ", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("Error encoding getBalanceResponse struct to JSON: ", err)))
 		return
