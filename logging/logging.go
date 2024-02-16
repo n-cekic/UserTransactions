@@ -27,5 +27,9 @@ func (l *Log) Println(v ...any) {
 }
 
 func (l *Log) Fatalf(s string, v ...any) {
-	l.logger.Printf(s, v...)
+	l.logger.Fatalf(s, v...)
+}
+
+func (l *Log) Fatal(v ...any) {
+	l.logger.Fatal(v...)
 }
