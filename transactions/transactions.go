@@ -8,19 +8,22 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/IBM/sarama"
 	"github.com/nats-io/nats.go"
 
 	L "userTransactions/logging"
 )
 
 type Service struct {
-	mux  *http.ServeMux
-	repo Repo
-	nc   *nats.Conn
+	mux               *http.ServeMux
+	repo              Repo
+	nc                *nats.Conn
+	consumer          sarama.ConsumerGroup
+	partitionConsumer sarama.PartitionConsumer
 }
 
 // Init configures and initializes the service
-func Init(dbHost, dbPort, dbUser, dbPassword, dbName, subject string) *Service {
+func Init(dbHost, dbPort, dbUser, dbPassword, dbName, subject, broker, group, topic string) *Service {
 	L.Logger.Info("Service is being initialized")
 
 	var srv Service
@@ -34,6 +37,9 @@ func Init(dbHost, dbPort, dbUser, dbPassword, dbName, subject string) *Service {
 	// initialize NATS connection
 	srv.natsSetup(subject)
 
+	// initialize kafka connection
+	srv.kafkaSetup(broker, group, topic)
+
 	L.Logger.Info("Service initialized")
 	return &srv
 }
@@ -42,8 +48,8 @@ func (srv *Service) muxSetup() {
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.NotFoundHandler())
-	mux.Handle("/createUser", http.HandlerFunc(srv.depositHandler))
-	mux.Handle("/balance", http.HandlerFunc(srv.transferHnadler))
+	mux.Handle("/deposit", http.HandlerFunc(srv.depositHandler))
+	mux.Handle("/transfer", http.HandlerFunc(srv.transferHnadler))
 
 	srv.mux = mux
 }
@@ -76,11 +82,55 @@ func (srv *Service) natsSetup(subject string) {
 	nc.Subscribe(subject, srv.getBalanceNATS)
 }
 
+func (srv *Service) kafkaSetup(broker, group, topic string) {
+	config := sarama.NewConfig()
+	config.Consumer.Return.Errors = true
+
+	consumer, err := sarama.NewConsumer(strings.Split(broker, ","), config)
+	if err != nil {
+		fmt.Println("Error creating Kafka consumer:", err)
+		return
+	}
+
+	partitionConsumer, err := consumer.ConsumePartition(topic, 0, sarama.OffsetNewest)
+
+	if err != nil {
+		fmt.Println("Error creating partition consumer:", err)
+		return
+	}
+
+	srv.partitionConsumer = partitionConsumer
+
+	go func() {
+		for {
+			select {
+			case err := <-partitionConsumer.Errors():
+				fmt.Println("Error in partition consumer:", err)
+			case msg := <-partitionConsumer.Messages():
+				L.Logger.Infof("Received message from partition %d at offset %d:\n", msg.Partition, msg.Offset)
+				var val kafkaMessage
+				err := json.Unmarshal(msg.Value, &val)
+				if err != nil {
+					L.Logger.Error(err)
+				} else {
+					err := srv.repo.insertNewUser(val.Id, val.CreatedAt)
+					if err != nil {
+						L.Logger.Error(err)
+					} else {
+						L.Logger.Info("New user added to the database")
+					}
+				}
+			}
+		}
+	}()
+}
+
 func (srv *Service) getBalanceNATS(msg *nats.Msg) {
 	idstr := strings.Split(msg.Subject, ".")[2] // subject: get.balance.ID
 
 	id, err := strconv.Atoi(idstr)
 	if err != nil {
+		L.Logger.Error("Failed to convert id to integer: ", err)
 		// TODO: find a way to return the error
 		return
 	}
@@ -90,6 +140,7 @@ func (srv *Service) getBalanceNATS(msg *nats.Msg) {
 
 	resp, err := json.Marshal(balance)
 	if err != nil {
+		L.Logger.Error("Failed to marshal the response: ", err)
 		// TODO: find a way to return the error
 		return
 	}
@@ -117,4 +168,13 @@ func (srv *Service) Stop() {
 
 	L.Logger.Info("Closing NATS connection...")
 	srv.nc.Close()
+
+	L.Logger.Info("Closing Kafka consumer...")
+	if err := srv.consumer.Close(); err != nil {
+		L.Logger.Error("Error closing Kafka consumer: ", err)
+	}
+
+	if err := srv.partitionConsumer.Close(); err != nil {
+		L.Logger.Error("Error closing partition consumer:", err)
+	}
 }

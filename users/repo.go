@@ -11,14 +11,16 @@ type Repo struct {
 	db *sql.DB
 }
 
-func (r *Repo) createUser(email string) error {
-	q := `INSERT INTO "user" ("email") VALUES ($1)`
+func (r *Repo) createUser(email string) (int, error) {
+	q := `INSERT INTO "user" ("email") VALUES ($1) RETURNING user_id`
 
-	_, err := r.db.Exec(q, email)
+	var id int
+	err := r.db.QueryRow(q, email).Scan(&id)
 	if err != nil {
 		L.Logger.Errorf("New user insert failed: %s", err.Error())
+		return 0, err
 	}
-	return err
+	return id, nil
 }
 
 func (r *Repo) getUserIDFromEmail(email string) (int, error) {

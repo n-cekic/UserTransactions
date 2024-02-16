@@ -3,6 +3,7 @@ package transactions
 import (
 	"database/sql"
 	"errors"
+	"time"
 	L "userTransactions/logging"
 
 	_ "github.com/lib/pq"
@@ -65,6 +66,10 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 		return errors.New("recipient is required to execute transaction")
 	}
 
+	if *recipientId == *senderId {
+		return errors.New("recipient and sender IDs must be different from one another")
+	}
+
 	var currentBalance float64
 	q := "SELECT balance FROM userbalance WHERE user_id = $1"
 	err := r.db.QueryRow(q, senderId).Scan(&currentBalance)
@@ -72,8 +77,8 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 		return err
 	}
 
-	if currentBalance-amount >= 0 {
-		return errors.New("not enough funds on the account")
+	if currentBalance-amount < 0 {
+		return errors.New("insufficient funds on the account")
 	}
 
 	newBalance := currentBalance - amount
@@ -83,6 +88,7 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 		return err
 	}
 
+	q = "SELECT balance FROM userbalance WHERE user_id = $1"
 	var currentBalanceRecipient float64
 	err = r.db.QueryRow(q, recipientId).Scan(&currentBalanceRecipient)
 	if err != nil {
@@ -92,7 +98,7 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 
 	newBalance = currentBalanceRecipient + amount
 	q = "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	_, err = r.db.Exec(q, newBalance, senderId)
+	_, err = r.db.Exec(q, newBalance, recipientId)
 	if err != nil {
 		r.restoreBalance(senderId, currentBalance)
 		return err
@@ -100,6 +106,7 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 
 	err = r.newTransactionRecord(senderId, recipientId, "T", amount)
 	if err != nil {
+		L.Logger.Error("Failed to record the transaction: ", err)
 		r.restoreBalance(senderId, currentBalance)
 		r.restoreBalance(recipientId, currentBalanceRecipient)
 		return err
@@ -109,13 +116,25 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 }
 
 func (r *Repo) newTransactionRecord(from, to *int, operation string, amount float64) error {
-	q := "INSERT INTO transaction (from, to, type, amount) VALUES ($1, $2, $3, $4)"
+	q := `INSERT INTO transaction ("from", "to", "type", amount) VALUES ($1, $2, $3, $4)`
 
 	_, err := r.db.Exec(q, from, to, operation, amount)
 	return err
 }
 
-func (r *Repo) restoreBalance(userID *int, balance float64) {
+func (r *Repo) restoreBalance(userId *int, balance float64) {
 	q := "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	r.db.Exec(q, balance, userID)
+	_, err := r.db.Exec(q, balance, userId)
+	if err != nil {
+		L.Logger.Error("Failed to restore transaction: ", err)
+		return
+	}
+
+	L.Logger.Info("Transaction restored successfully")
+}
+
+func (r *Repo) insertNewUser(userId int, createdAt time.Time) error {
+	q := `INSERT INTO userbalance (user_id, balance, created_at) VALUES ($1, $2, $3)`
+	_, err := r.db.Exec(q, userId, 0, createdAt)
+	return err
 }
