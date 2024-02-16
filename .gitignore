@@ -2,3 +2,6 @@
 cmd/usersd/usersd
 cmd/transactionsd/transactionsd
 *.exe
+
+# ide data
+.vscode
