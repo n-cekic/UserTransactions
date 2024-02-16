@@ -27,7 +27,7 @@ const PORT = ":8765"
 // DB connection params
 const (
 	dbHost     = "localhost"
-	dbPort     = 5432
+	dbPort     = "5432"
 	dbUser     = "postgres"
 	dbPassword = "postgres"
 	dbName     = "users"
@@ -44,7 +44,7 @@ const (
 	subject = "get.balance."
 )
 
-// Init configures and initializes the service and DB connection
+// Init configures and initializes the service
 func Init() *Service {
 	L.Logger.Info("Service is being initialized")
 
@@ -64,7 +64,6 @@ func Init() *Service {
 
 	L.Logger.Info("Service initialized")
 	return &srv
-
 }
 
 func (srv *Service) muxSetup() {
@@ -80,7 +79,7 @@ func (srv *Service) muxSetup() {
 }
 
 func (srv *Service) dbSetup() {
-	connectionString := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
+	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName)
 	db, err := sql.Open("postgres", connectionString)
 	if err != nil {
@@ -131,7 +130,7 @@ func (s *Service) Run() {
 	}()
 }
 
-// Stop is stopping the service and closes DB connection
+// Stop is stopping the service and closes all connections
 func (s *Service) Stop() {
 	L.Logger.Info("Closing DB connection...")
 	s.repo.db.Close()
