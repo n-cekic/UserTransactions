@@ -4,8 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
+	"strings"
+	"time"
 	L "userTransactions/logging"
+
+	"github.com/IBM/sarama"
 )
 
 type Service struct {
@@ -17,11 +22,8 @@ type Service struct {
 const PORT = ":8765"
 
 const (
-	host     = "localhost"
-	port     = 5432
-	user     = "postgres"
-	password = "postgres"
-	dbname   = "users"
+	broker = "localhost:9092"
+	topic  = "newuser"
 )
 
 // Init configures and initializes the service and DB connection
@@ -57,10 +59,19 @@ func Init() *Service {
 	} else {
 		L.Logger.Println("DB connection established")
 	}
+}
 
-	L.Logger.Println("Service initialized")
-	return &srv
+func (srv *Service) kafkaSetup() {
+	config := sarama.NewConfig()
+	config.Producer.Return.Successes = true
+	config.Producer.Timeout = 5 * time.Second
 
+	// Create a new Kafka producer
+	producer, err := sarama.NewSyncProducer(strings.Split(broker, ","), config)
+	if err != nil {
+		L.Logger.Fatal("Error creating Kafka producer: ", err)
+	}
+	srv.producer = producer
 }
 
 // Run is used to start service
@@ -81,6 +92,11 @@ func (s *Service) Stop() {
 	L.Logger.Print("Closing DB connection")
 	s.repo.db.Close()
 	L.Logger.Print("DB connection closed")
+
+	L.Logger.Print("Closing Kafka producer")
+	if err := s.producer.Close(); err != nil {
+		log.Println("Error closing Kafka producer: ", err)
+	}
 }
 
 func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +136,21 @@ func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// KAFKA notify
+	newUserNotification := newUserKafkaMessage{
+		Email:     userData.Email,
+		CreatedAt: time.Now(),
+	}
+	msgJSON, err := json.Marshal(newUserNotification)
+	if err != nil {
+		L.Logger.Print("Error encoding struct to JSON: ", err)
+	}
+
+	msg := sarama.ProducerMessage{
+		Topic: topic,
+		Value: sarama.StringEncoder(msgJSON),
+	}
+
+	s.producer.SendMessage(&msg)
 }
 
 func getUserBalance(w http.ResponseWriter, r *http.Request) {
