@@ -2,13 +2,11 @@ package users
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 	L "userTransactions/logging"
-	"userTransactions/transactions"
 
 	"github.com/IBM/sarama"
 	"github.com/nats-io/nats.go"
@@ -17,48 +15,28 @@ import (
 type Service struct {
 	mux      *http.ServeMux
 	repo     Repo
-	port     string
+	subject  string
+	topic    string
 	producer sarama.SyncProducer
 	nc       *nats.Conn
 }
 
-// service port
-const PORT = ":8080"
-
-// DB connection params
-const (
-	dbHost     = "localhost"
-	dbPort     = "5432"
-	dbUser     = "postgres"
-	dbPassword = "postgres"
-	dbName     = "users"
-)
-
-// kafka connection params
-const (
-	broker = "localhost:9092"
-	topic  = "new.user"
-)
-
-// NATS connection
-const (
-	subject = "get.balance."
-)
-
 // Init configures and initializes the service
-func Init() *Service {
+func Init(dbHost, dbPort, dbUser, dbPassword, dbName, subject, broker, topic string) *Service {
 	L.Logger.Info("Service is being initialized")
 
 	var srv Service
+	srv.subject = subject
+	srv.topic = topic
 
 	// initialize REST service
 	srv.muxSetup()
 
 	// initialiye DB connection
-	srv.dbSetup()
+	srv.dbSetup(dbHost, dbPort, dbUser, dbPassword, dbName)
 
 	// initialize kafka connection
-	srv.kafkaSetup()
+	srv.kafkaSetup(broker)
 
 	// initialize NATS connection
 	srv.natsSetup()
@@ -68,8 +46,6 @@ func Init() *Service {
 }
 
 func (srv *Service) muxSetup() {
-	srv.port = PORT
-
 	mux := http.NewServeMux()
 
 	mux.Handle("/", http.NotFoundHandler())
@@ -79,7 +55,7 @@ func (srv *Service) muxSetup() {
 	srv.mux = mux
 }
 
-func (srv *Service) dbSetup() {
+func (srv *Service) dbSetup(dbHost, dbPort, dbUser, dbPassword, dbName string) {
 	connectionString := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 		dbHost, dbPort, dbUser, dbPassword, dbName)
 	db, err := sql.Open("postgres", connectionString)
@@ -96,7 +72,7 @@ func (srv *Service) dbSetup() {
 	}
 }
 
-func (srv *Service) kafkaSetup() {
+func (srv *Service) kafkaSetup(broker string) {
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 	config.Producer.Timeout = 5 * time.Second
@@ -119,14 +95,14 @@ func (srv *Service) natsSetup() {
 }
 
 // Run is used to start service
-func (s *Service) Run() {
+func (s *Service) Run(port string) {
 	L.Logger.Info("Running the service")
 	go func() {
-		err := http.ListenAndServe(s.port, s.mux)
+		err := http.ListenAndServe(port, s.mux)
 		if err != nil {
-			L.Logger.Fatalf("failed startign the service on port %s :%s", s.port, err.Error())
+			L.Logger.Fatalf("failed startign the service on port %s :%s", port, err.Error())
 		} else {
-			L.Logger.Infof("The service is up and running on port %s", s.port)
+			L.Logger.Infof("The service is up and running on port %s", port)
 		}
 	}()
 }
@@ -143,143 +119,4 @@ func (s *Service) Stop() {
 
 	L.Logger.Info("Closing NATS connection...")
 	s.nc.Close()
-}
-
-func (s *Service) createUserHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		L.Logger.Errorf("Request method noot allowed: %s", r.Method)
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("Request method unallowed: %s", r.Method)))
-		return
-	}
-
-	d := json.NewDecoder(r.Body)
-	d.DisallowUnknownFields()
-
-	var userData createUserRequest
-	err := d.Decode(&userData)
-	if err != nil {
-		L.Logger.Errorf("Failed decoding create user request: %+v. %s", r.Body, err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Failed decoding create user request. %s", err.Error())))
-		return
-	}
-
-	if userData.Email == "" {
-		L.Logger.Info("Email is mandatory in request")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Email is mandatory in request"))
-		return
-	}
-
-	id, err := s.repo.createUser(userData.Email)
-	if err != nil {
-		L.Logger.Info("Failed creating new user: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Failed creating new user. %s", err.Error())))
-		return
-	}
-
-	// KAFKA notify
-	newUserNotification := newUserKafkaMessage{
-		Id:        id,
-		Email:     userData.Email,
-		CreatedAt: time.Now(),
-	}
-
-	msgJSON, err := json.Marshal(newUserNotification)
-	if err != nil {
-		L.Logger.Info("Error encoding newUserKafkaMessage struct to JSON: ", err)
-	}
-
-	msg := sarama.ProducerMessage{
-		Topic: topic,
-		Value: sarama.StringEncoder(msgJSON),
-	}
-
-	_, _, err = s.producer.SendMessage(&msg)
-	if err != nil {
-		L.Logger.Error("Failed sending kafka message", msg.Value, ": ", err)
-	}
-
-	L.Logger.Infof("New user %s created", userData.Email)
-	w.Write([]byte("New user created"))
-}
-
-func (s *Service) getUserBalance(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		L.Logger.Errorf("Request method not allowed: %s", r.Method)
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		w.Write([]byte(fmt.Sprintf("Request method unallowed: %s", r.Method)))
-		return
-	}
-
-	d := json.NewDecoder(r.Body)
-	d.DisallowUnknownFields()
-
-	var userData getBalanceRequest
-	err := d.Decode(&userData)
-	if err != nil {
-		L.Logger.Errorf("Failed decoding get balance request: %+v. %s", r.Body, err.Error())
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Failed decoding get balance request. %s", err.Error())))
-		return
-	}
-
-	id, err := s.repo.getUserIDFromEmail(userData.Email)
-
-	if err != nil {
-		L.Logger.Error("Failed getting userID based on the given e-mail: ", err)
-		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(fmt.Sprintf("Failed getting userID based on the given e-mail: %s", err.Error())))
-		return
-	}
-
-	/*
-		NATS request to transactions service
-		transctions service processing...
-		NATS response from transactions service
-	*/
-
-	natsResp, err := s.nc.Request(subject+fmt.Sprintf("%d", id), nil, 10*time.Millisecond)
-	if err != nil {
-		L.Logger.Errorf("Failed getting balance for user %s: %s", userData.Email, err.Error())
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Failed getting balance for user %s: %s", userData.Email, err.Error())))
-		return
-	}
-
-	if natsResp == nil {
-		L.Logger.Error("NATS request timed out")
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("NATS request timed out"))
-		return
-	}
-
-	var balance transactions.BalanceNATSResponse
-
-	err = json.Unmarshal(natsResp.Data, &balance)
-	if err != nil {
-		L.Logger.Error("Error decoding response: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("Error decoding NATS response: %v", err)))
-		return
-	}
-
-	L.Logger.Infof("Balance retreived %+v", balance)
-
-	resp := getBalanceResponse{
-		Email:   userData.Email,
-		Balance: balance.Balance,
-	}
-
-	msgJSON, err := json.Marshal(resp)
-	if err != nil {
-		L.Logger.Error("Error encoding getBalanceResponse struct to JSON: ", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprint("Error encoding getBalanceResponse struct to JSON: ", err)))
-		return
-	}
-
-	w.Write([]byte(msgJSON))
 }
