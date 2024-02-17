@@ -1,6 +1,7 @@
 package transactions
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"time"
@@ -34,22 +35,30 @@ func (r *Repo) deposit(userId *int, amount float64) (float64, error) {
 		return 0, errors.New("amount must be positive number")
 	}
 
+	tx, err := r.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
 	var currentBalance float64
 	q := "SELECT balance FROM userbalance WHERE user_id = $1"
-	err := r.db.QueryRow(q, userId).Scan(&currentBalance)
+	err = tx.QueryRow(q, userId).Scan(&currentBalance)
 	if err != nil {
 		return 0, err
 	}
 
 	newBalance := currentBalance + amount
 	q = "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	_, err = r.db.Exec(q, newBalance, userId)
+	tx.Exec(q, newBalance, userId)
 	if err != nil {
 		return 0, err
 	}
 
-	err = r.newTransactionRecord(userId, userId, "D", amount)
+	err = r.newTransactionRecord(tx, userId, userId, "D", amount)
 
+	L.Logger.Info("Deposited successfully")
+	tx.Commit()
 	return newBalance, err
 }
 
@@ -70,9 +79,15 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 		return errors.New("recipient and sender IDs must be different from one another")
 	}
 
+	tx, err := r.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
 	var currentBalance float64
 	q := "SELECT balance FROM userbalance WHERE user_id = $1"
-	err := r.db.QueryRow(q, senderId).Scan(&currentBalance)
+	err = tx.QueryRow(q, senderId).Scan(&currentBalance)
 	if err != nil {
 		return err
 	}
@@ -83,54 +98,41 @@ func (r *Repo) transfer(senderId, recipientId *int, amount float64) error {
 
 	newBalance := currentBalance - amount
 	q = "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	_, err = r.db.Exec(q, newBalance, senderId)
+	_, err = tx.Exec(q, newBalance, senderId)
 	if err != nil {
 		return err
 	}
 
 	q = "SELECT balance FROM userbalance WHERE user_id = $1"
 	var currentBalanceRecipient float64
-	err = r.db.QueryRow(q, recipientId).Scan(&currentBalanceRecipient)
+	err = tx.QueryRow(q, recipientId).Scan(&currentBalanceRecipient)
 	if err != nil {
-		r.restoreBalance(senderId, currentBalance)
 		return err
 	}
 
 	newBalance = currentBalanceRecipient + amount
 	q = "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	_, err = r.db.Exec(q, newBalance, recipientId)
+	_, err = tx.Exec(q, newBalance, recipientId)
 	if err != nil {
-		r.restoreBalance(senderId, currentBalance)
 		return err
 	}
 
-	err = r.newTransactionRecord(senderId, recipientId, "T", amount)
+	err = r.newTransactionRecord(tx, senderId, recipientId, "T", amount)
 	if err != nil {
 		L.Logger.Error("Failed to record the transaction: ", err)
-		r.restoreBalance(senderId, currentBalance)
-		r.restoreBalance(recipientId, currentBalanceRecipient)
 		return err
 	}
 
+	L.Logger.Info("Transfer finished successfully")
+	tx.Commit()
 	return nil
 }
 
-func (r *Repo) newTransactionRecord(from, to *int, operation string, amount float64) error {
+func (r *Repo) newTransactionRecord(tx *sql.Tx, from, to *int, operation string, amount float64) error {
 	q := `INSERT INTO transaction ("from", "to", "type", amount) VALUES ($1, $2, $3, $4)`
 
-	_, err := r.db.Exec(q, from, to, operation, amount)
+	_, err := tx.Exec(q, from, to, operation, amount)
 	return err
-}
-
-func (r *Repo) restoreBalance(userId *int, balance float64) {
-	q := "UPDATE userbalance SET balance = $1 WHERE user_id = $2"
-	_, err := r.db.Exec(q, balance, userId)
-	if err != nil {
-		L.Logger.Error("Failed to restore transaction: ", err)
-		return
-	}
-
-	L.Logger.Info("Transaction restored successfully")
 }
 
 func (r *Repo) insertNewUser(userId int, createdAt time.Time) error {
