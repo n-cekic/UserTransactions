@@ -8,7 +8,6 @@ import (
 	"userTransactions/users"
 )
 
-// DB connection params
 var (
 	dbHost     = flag.String("db.host", "localhost", "Database Host")
 	dbPort     = flag.String("db.port", "5432", "Database Port")
