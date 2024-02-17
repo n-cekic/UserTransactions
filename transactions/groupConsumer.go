@@ -3,32 +3,33 @@ package transactions
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	L "userTransactions/logging"
 
 	"github.com/IBM/sarama"
 )
 
-func (srv *Service) kafkaSetup(broker, groupAAAA, topic string) {
+func (srv *Service) kafkaSetup(broker, groupName, topic string) {
 
 	config := sarama.NewConfig()
 	config.Consumer.Return.Errors = true
 	config.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 
-	groupConsumer, err := sarama.NewConsumerGroup(strings.Split(broker, ","), groupAAAA, config)
+	groupConsumer, err := sarama.NewConsumerGroup(strings.Split(broker, ","), groupName, config)
 	if err != nil {
-		fmt.Println("Error creating Kafka consumer group:", err)
+		L.Logger.Error("Error creating Kafka consumer group:", err)
 		return
 	}
+
+	srv.groupConsumer = groupConsumer
 
 	handler := &ConsumerGroupHandler{repo: &srv.repo}
 
 	go func() {
 		for {
 			err := groupConsumer.Consume(context.TODO(), []string{topic}, handler)
-			if err != nil {
-				fmt.Println("Error in Kafka consumer group:", err)
+			if err != nil && err != sarama.ErrClosedConsumerGroup {
+				L.Logger.Error("Error in Kafka consumer group:", err)
 			}
 		}
 	}()

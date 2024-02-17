@@ -18,7 +18,6 @@ type Service struct {
 	mux           *http.ServeMux
 	repo          Repo
 	nc            *nats.Conn
-	consumer      sarama.ConsumerGroup
 	groupConsumer sarama.ConsumerGroup
 }
 
@@ -127,10 +126,6 @@ func (srv *Service) Stop() {
 	srv.nc.Close()
 
 	L.Logger.Info("Closing Kafka consumer...")
-	if err := srv.consumer.Close(); err != nil {
-		L.Logger.Error("Error closing Kafka consumer: ", err)
-	}
-
 	if err := srv.groupConsumer.Close(); err != nil {
 		L.Logger.Error("Error closing partition consumer:", err)
 	}
