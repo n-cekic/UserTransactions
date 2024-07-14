@@ -73,7 +73,7 @@ func (srv *Service) dbSetup(dbHost, dbPort, dbUser, dbPassword, dbName string) {
 func (srv *Service) natsSetup(subject string) {
 	nc, err := nats.Connect(nats.DefaultURL)
 	if err != nil {
-		L.Logger.Fatal("Failet connecting to NATS: ", err)
+		L.Logger.Fatal("Failed connecting to NATS: ", err)
 	}
 
 	srv.nc = nc
